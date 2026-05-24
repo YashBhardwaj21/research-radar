@@ -6,11 +6,16 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export default defineConfig({
   earlyAccess: true,
-  schema: {
-    path: "prisma/schema.prisma",
+  schema: "prisma/schema.prisma",
+  migrations: "prisma/migrations",
+  migrate: {
+    url: process.env["POSTGRES_URL"] || "postgresql://postgres:postgres@localhost:5432/pipeline",
   },
-  migrations: {
-    path: "prisma/migrations",
+  studio: {
+    url: process.env["POSTGRES_URL"] || "postgresql://postgres:postgres@localhost:5432/pipeline",
+  },
+  introspect: {
+    url: process.env["POSTGRES_URL"] || "postgresql://postgres:postgres@localhost:5432/pipeline",
   },
   datasource: {
     url: process.env["POSTGRES_URL"] || "postgresql://postgres:postgres@localhost:5432/pipeline",
