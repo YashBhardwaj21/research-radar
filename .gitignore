@@ -1,0 +1,16 @@
+node_modules/
+dist/
+
+# Environment Variables
+.env
+
+# Playwright & Testing
+playwright-report/
+test-results/
+
+# App Generated Data
+logs/
+sessions/
+downloads/
+
+/src/generated/prisma

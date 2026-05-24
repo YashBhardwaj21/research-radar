@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build TypeScript
+RUN npm run build
+
+# Start worker (for now, just a placeholder, actual worker file will be implemented in M2)
+# For the verification script, we can override the CMD in docker-compose.
+CMD ["node", "dist/queue/worker.js"]
