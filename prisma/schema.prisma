@@ -1,0 +1,86 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+enum SourceHealth {
+  HEALTHY
+  COOLDOWN
+  HALF_OPEN
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  FAILED
+  COMPLETED
+  RETRYING
+}
+
+enum EmbeddingStatus {
+  PENDING
+  GENERATED
+  FAILED
+}
+
+model Source {
+  id       String       @id @default(uuid())
+  name     String       @unique // pubmed, arxiv, semanticscholar
+  health   SourceHealth @default(HEALTHY)
+  cooldown DateTime?
+  papers   Paper[]
+}
+
+model ScrapeJob {
+  id         String    @id
+  status     JobStatus @default(PENDING)
+  retries    Int       @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  workerId   String?
+}
+
+model Paper {
+  id              String          @id @default(uuid())
+  title           String
+  normalizedTitle String?
+  abstract        String?
+  doi             String?         @unique
+  url             String          @unique
+  year            Int?
+  sourceId        String
+  source          Source          @relation(fields: [sourceId], references: [id])
+
+  // 768 dimensions for nomic-embed-text
+  embedding       Unsupported("vector(768)")?
+  embeddingStatus EmbeddingStatus @default(PENDING)
+
+  authors         PaperAuthor[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([year])
+  @@index([sourceId])
+  @@index([createdAt])
+  @@index([normalizedTitle])
+}
+
+model Author {
+  id     String        @id @default(uuid())
+  name   String        @unique
+  papers PaperAuthor[]
+}
+
+model PaperAuthor {
+  paperId  String
+  authorId String
+  paper    Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([paperId, authorId])
+}
