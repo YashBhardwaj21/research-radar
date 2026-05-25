@@ -1,7 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { config } from '../core/config';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: config.postgresUrl });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 interface ExportRequestBody {
   format: 'csv' | 'json' | 'bibtex';

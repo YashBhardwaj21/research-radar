@@ -28,12 +28,31 @@ export class ContextPool {
     // Cleanup stale/overused contexts first
     await this.cleanup();
 
+    // Try to find an idle context
+    const idleContext = this.pool.find(p => !p.inUse);
+    if (idleContext) {
+      idleContext.inUse = true;
+      idleContext.useCount++;
+      idleContext.lastUsedAt = Date.now();
+      logger.debug({ activeContexts: this.pool.filter(p => p.inUse).length }, 'Acquired existing browser context');
+      return idleContext.context;
+    }
+
     while (this.pool.length >= this.maxContexts) {
       logger.debug('Max contexts reached, queuing request');
       await new Promise<void>(resolve => {
         this.waitQueue.push(resolve);
       });
       await this.cleanup();
+      
+      // Check again if an idle context freed up after waiting
+      const freedContext = this.pool.find(p => !p.inUse);
+      if (freedContext) {
+        freedContext.inUse = true;
+        freedContext.useCount++;
+        freedContext.lastUsedAt = Date.now();
+        return freedContext.context;
+      }
     }
 
     const context = await this.browser.newContext({

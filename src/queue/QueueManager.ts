@@ -57,18 +57,19 @@ export class QueueManager {
   /**
    * Enqueues a job. Uses deterministic jobId to prevent duplicate ingestion.
    */
-  public async enqueue(source: ScrapeJobPayload['source'], query: string, maxResults = 10): Promise<void> {
-    const job_id = QueueManager.generateJobId(source, query);
+  public async enqueue(source: ScrapeJobPayload['source'], query: string, maxResults = 10): Promise<string> {
+    const job_id = crypto.randomUUID();
 
     await scrapeQueue.add(
       QUEUE_NAME,
       { job_id, source, query, maxResults },
       {
-        jobId: job_id, // Idempotency: BullMQ will skip if this ID already exists
+        jobId: job_id,
       }
     );
 
     logger.info({ job_id, source, query }, 'QueueManager: Job enqueued');
+    return job_id;
   }
 
   /**

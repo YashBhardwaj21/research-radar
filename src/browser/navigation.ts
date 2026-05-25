@@ -20,7 +20,29 @@ export async function safeGoto(page: Page, url: string, retries = 3, waitUntil: 
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      await page.goto(url, { waitUntil, timeout: 30000 });
+      const response = await page.goto(url, { waitUntil, timeout: 30000 });
+      
+      if (response) {
+        const status = response.status();
+        if (status === 403 || status === 429) {
+          throw new Error(`ERR_BLOCKED: Received HTTP ${status}. Rate limit or IP block detected.`);
+        }
+      }
+
+      // CAPTCHA / Block Content Detection
+      const pageContent = await page.content();
+      const blockIndicators = ['captcha', 'cloudflare', 'unusual traffic', 'prove you are human', 'access denied', 'turn on javascript'];
+      const lowerContent = pageContent.toLowerCase();
+      
+      for (const indicator of blockIndicators) {
+        if (lowerContent.includes(indicator)) {
+          const hasCaptcha = await page.$('iframe[src*="captcha"], #cf-challenge-form, .g-recaptcha').catch(() => null);
+          if (hasCaptcha) {
+            throw new Error(`ERR_CAPTCHA: Automated access blocked by CAPTCHA.`);
+          }
+        }
+      }
+
       logger.info({ url, attempt }, 'Navigation success');
       return true;
     } catch (error: any) {

@@ -16,7 +16,6 @@ export abstract class BaseExtractor {
   // Extractors no longer manage their own contexts. The Orchestrator manages the context
   // and injects it. This allows the Orchestrator to force-kill the context on timeouts.
 
-
   abstract get sourceName(): string;
 
   /**

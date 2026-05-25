@@ -65,7 +65,12 @@ async function startWorker() {
 
         let timeoutHandle: NodeJS.Timeout | null = null;
 
+        let traceSaved = false;
+
         try {
+          // Start tracing for potential failure replay
+          await context.tracing.start({ screenshots: true, snapshots: true });
+
           // 3. Race execution against strict timeout
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutHandle = setTimeout(async () => {
@@ -73,7 +78,6 @@ async function startWorker() {
               for (const page of context.pages()) {
                 await page.close().catch(() => {});
               }
-              // We don't release context here anymore; the finally block will handle it
               reject(new Error(`Job ${job_id} exceeded timeout of ${JOB_TIMEOUT_MS}ms`));
             }, JOB_TIMEOUT_MS);
           });
@@ -117,11 +121,16 @@ async function startWorker() {
           scrapeErrorsTotal.labels(source, err.message?.slice(0, 30) || 'unknown').inc();
           activeWorkers.dec();
 
+          // Save Playwright trace on failure
+          const tracePath = `traces/trace-${job_id}.zip`;
+          logger.error({ job_id, tracePath }, 'Worker: Job failed, saving Playwright trace for replay.');
+          await context.tracing.stop({ path: tracePath }).catch(() => {});
+          traceSaved = true;
+
           // Classify non-retryable errors to skip retry queue
           for (const code of NON_RETRYABLE_CODES) {
             if (err.message?.includes(code)) {
               logger.error({ job_id, code }, 'Worker: Non-retryable error. Sending to Dead Letter Queue.');
-              // BullMQ will move to failed immediately when UnrecoverableError is thrown
               const { UnrecoverableError } = await import('bullmq');
               throw new UnrecoverableError(err.message);
             }
@@ -132,6 +141,9 @@ async function startWorker() {
         } finally {
           if (timeoutHandle) clearTimeout(timeoutHandle);
           workerHealth.setStuckState(false);
+          if (!traceSaved) {
+            await context.tracing.stop().catch(() => {});
+          }
           // Always release the context back to the pool
           try { await pool.releaseContext(context); } catch (_) {}
         }

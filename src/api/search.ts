@@ -33,7 +33,7 @@ interface SearchResult {
 }
 
 export async function startSearchServer(port = 3000) {
-  const app = Fastify({ logger });
+  const app = Fastify({ loggerInstance: logger });
 
   // Swagger Docs
   const { setupSwagger } = require('./swagger');

@@ -14,3 +14,9 @@ sessions/
 downloads/
 
 /src/generated/prisma
+
+# Leftover Debugging & Verification Artifacts
+debug-*
+verify-*
+traces/
+*.bak

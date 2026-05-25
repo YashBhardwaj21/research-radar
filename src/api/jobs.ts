@@ -21,4 +21,15 @@ export async function jobsRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Failed to fetch queue status' });
     }
   });
+
+  fastify.post('/api/jobs', async (request, reply) => {
+    const { source, query, maxResults } = request.body as any;
+
+    if (!source || !query) {
+      return reply.status(400).send({ error: "Missing source or query" });
+    }
+
+    const jobId = await queueManager.enqueue(source, query, maxResults ?? 10);
+    return reply.status(202).send({ jobId });
+  });
 }
