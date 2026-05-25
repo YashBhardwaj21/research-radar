@@ -25,7 +25,7 @@ export class BrowserManager extends EventEmitter {
     logger.info({ headless: config.browserHeadless }, 'Launching browser instance...');
     this.browser = await chromium.launch({
       headless: config.browserHeadless,
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
     });
 
     this.contextPool = new ContextPool(this.browser, config.maxContexts);

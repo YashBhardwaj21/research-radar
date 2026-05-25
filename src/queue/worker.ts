@@ -156,80 +156,116 @@ async function startWorker() {
 
           const EXTRACTOR_TIMEOUTS: Record<string, number> = {
             'pubmedextractor': 45000,
-            'arxivextractor': 30000,
-            'semanticscholarextractor': 25000
+            'arxivextractor': 30000
           };
 
-          const settledResults = await Promise.allSettled(
-            extractorsToRun.map(async ({ extractor, cacheKey, extName }) => {
-              const start = Date.now();
-              const timeoutMs = EXTRACTOR_TIMEOUTS[extName] || 25000;
-              
-              const scrapeLockKey = `scrape:${query}:${extName}`;
-              const locked = await redisClient.setnx(scrapeLockKey, '1');
-              if (!locked) {
-                 logger.info({ source: extName }, 'Worker: Scrape lock acquired by another worker. Skipping.');
-                 return [];
-              }
-              await redisClient.expire(scrapeLockKey, 60);
+          const fallbacks = [
+            query,
+            query.replace(/quantum/i, '').replace(/\s+/g, ' ').trim(),
+            query.split(' ').slice(0, 5).join(' ')
+          ];
 
-              logger.info({ extractor: extName, started: start, timeoutMs }, 'Worker: Extractor start');
-              
-              return Promise.race([
-                extractor.search(context, query, maxResults, controller.signal).then(async (res: any[]) => {
-                  const elapsed = Date.now() - start;
-                  logger.info({ extractor: extName, count: res.length, elapsed }, 'Worker: Extractor finished');
+          let settledResults: PromiseSettledResult<any[]>[] = [];
+          
+          for (const currentQuery of fallbacks) {
+            if (!currentQuery) continue;
+            
+            logger.info({ currentQuery }, 'Worker: Attempting query extraction');
+
+            settledResults = await Promise.allSettled(
+              extractorsToRun.map(async ({ extractor, cacheKey, extName }) => {
+                const start = Date.now();
+                const timeoutMs = EXTRACTOR_TIMEOUTS[extName] || 25000;
+                
+                // Use currentQuery for lock so fallbacks get distinct locks
+                const scrapeLockKey = `scrape:${currentQuery}:${extName}`;
+                const locked = await redisClient.setnx(scrapeLockKey, '1');
+                if (!locked) {
+                   logger.info({ source: extName }, 'Worker: Scrape lock acquired by another worker. Skipping.');
+                   return [];
+                }
+                await redisClient.expire(scrapeLockKey, 60);
+
+                logger.info({ extractor: extName, started: start, timeoutMs }, 'Worker: Extractor start');
+                
+                return Promise.race([
+                  extractor.search(context, currentQuery, maxResults, controller.signal).then(async (res: any[]) => {
+                    const elapsed = Date.now() - start;
+                    logger.info({ extractor: extName, count: res.length, elapsed }, 'Worker: Extractor finished');
+                    await redisClient.del(scrapeLockKey);
+
+                    try {
+                      const healthKey = `health:extractor:${extName}`;
+                      const pipeline = redisClient.pipeline();
+                      pipeline.hincrby(healthKey, 'successCount', 1);
+                      pipeline.hincrby(healthKey, 'totalCount', 1);
+                      pipeline.hincrby(healthKey, 'totalLatency', elapsed);
+                      await pipeline.exec();
+                    } catch (err) {}
+                    
+                    const baseTtl = SOURCE_TTL[extName] || 86400;
+                    const cachePayload = {
+                      results: res,
+                      cachedAt: new Date().toISOString(),
+                      age: 0,
+                      cacheHitCount: 0,
+                      extractorLatency: elapsed,
+                      failureCount: 0,
+                      pipelineVersion: config.cacheVersion,
+                      source: extName
+                    };
+                    
+                    if (res.length > 0) {
+                      // Note: always storing in original query cacheKey for consistency when returned to user
+                      await redisClient.set(cacheKey, JSON.stringify(cachePayload), 'EX', baseTtl);
+                      logger.info({ source: extName, keysStored: res.length }, 'CACHE STORE');
+                    } else {
+                      logger.info({ source: extName }, 'CACHE SKIP (Empty array)');
+                    }
+
+                    return res;
+                  }),
+                  new Promise<any[]>((_, reject) => 
+                    setTimeout(() => reject(new Error(`Extractor timeout (${timeoutMs}ms)`)), timeoutMs)
+                  )
+                ]).catch(async (err) => {
                   await redisClient.del(scrapeLockKey);
-
                   try {
                     const healthKey = `health:extractor:${extName}`;
                     const pipeline = redisClient.pipeline();
-                    pipeline.hincrby(healthKey, 'successCount', 1);
+                    pipeline.hincrby(healthKey, 'failureCount', 1);
                     pipeline.hincrby(healthKey, 'totalCount', 1);
-                    pipeline.hincrby(healthKey, 'totalLatency', elapsed);
+                    pipeline.hset(healthKey, 'lastError', err.message);
                     await pipeline.exec();
-                  } catch (err) {}
-                  
-                  const baseTtl = SOURCE_TTL[extName] || 86400;
-                  const cachePayload = {
-                    results: res,
-                    cachedAt: new Date().toISOString(),
-                    age: 0,
-                    cacheHitCount: 0,
-                    extractorLatency: elapsed,
-                    failureCount: 0,
-                    pipelineVersion: config.cacheVersion,
-                    source: extName
-                  };
-                  await redisClient.set(cacheKey, JSON.stringify(cachePayload), 'EX', baseTtl);
-                  logger.info({ source: extName, keysStored: res.length }, 'CACHE STORE');
+                  } catch (redisErr) {}
+                  SourceHealthManager.getInstance().recordFailure(extName, err.message);
 
-                  return res;
-                }),
-                new Promise<any[]>((_, reject) => 
-                  setTimeout(() => reject(new Error(`Extractor timeout (${timeoutMs}ms)`)), timeoutMs)
-                )
-              ]).catch(async (err) => {
-                await redisClient.del(scrapeLockKey);
-                try {
-                  const healthKey = `health:extractor:${extName}`;
-                  const pipeline = redisClient.pipeline();
-                  pipeline.hincrby(healthKey, 'failureCount', 1);
-                  pipeline.hincrby(healthKey, 'totalCount', 1);
-                  pipeline.hset(healthKey, 'lastError', err.message);
-                  await pipeline.exec();
-                } catch (redisErr) {}
-                // Record the specific failure reason into the circuit breaker
-                SourceHealthManager.getInstance().recordFailure(extName, err.message);
+                  await redisClient.del(cacheKey);
+                  throw err;
+                });
+              })
+            );
 
-                await redisClient.del(cacheKey);
-                throw err;
-              });
-            })
-          );
-          
+            const rawScraped = settledResults.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+            if (rawScraped.length > 0) {
+              logger.info({ currentQuery, count: rawScraped.length }, 'Worker: Found results, stopping fallbacks');
+              break;
+            }
+          }
+
+          const rejected = settledResults.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+          if (rejected.length > 0) {
+            logger.error({ errors: rejected.map(r => r.reason?.message) }, 'Worker: Some extractors failed');
+          }
+
           const rawScraped = settledResults.flatMap(r => r.status === 'fulfilled' ? r.value : []);
           scrapedResults = [...cacheHits, ...rawScraped];
+
+          if (scrapedResults.length === 0) {
+            throw new Error('No extractors returned papers');
+          }
+
+          logger.info({ urls: scrapedResults.map(x=>x.url) }, 'PRE_DEDUP');
 
           let uniqueMap = new Map();
           for (const paper of scrapedResults) {
@@ -247,8 +283,8 @@ async function startWorker() {
               job: job_id,
               pubmed: finalResults.filter((p: any) => p.source === 'pubmed').length,
               arxiv: finalResults.filter((p: any) => p.source === 'arxiv').length,
-              semantic: finalResults.filter((p: any) => p.source === 'semanticscholar').length,
               flattened: scrapedResults.length,
+              duplicatesRemoved: scrapedResults.length - finalResults.length,
               deduplicated: finalResults.length,
               inserted: inserted
             }, 'Pipeline summary');

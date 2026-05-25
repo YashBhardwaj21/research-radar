@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { EmbeddingService } from '../processing/EmbeddingService';
+import { formatPaper } from '../processing/PaperFormatter';
 import { logger } from '../core/logger';
 import { searchLatencySeconds } from '../observability/metrics';
 import { config } from '../core/config';
@@ -138,11 +139,11 @@ export async function startSearchServer(port = 3000) {
             where: { paperId: paper.id },
             include: { author: true },
           });
-          return {
+          const authors = authorRows.map((r: any) => r.author.name);
+          return formatPaper({
             ...paper,
-            similarity: Number(paper.similarity),
-            authors: authorRows.map((r: any) => r.author.name),
-          };
+            authors,
+          });
         })
       );
 

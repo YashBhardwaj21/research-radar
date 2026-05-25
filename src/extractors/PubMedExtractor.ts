@@ -3,6 +3,7 @@ import { BaseExtractor, PaperMetadata } from './BaseExtractor';
 import { safeGoto } from '../browser/navigation';
 import { blockAdsAndTrackers } from '../browser/RequestFilter';
 import { logger } from '../core/logger';
+import { debugSnapshot } from '../utils/debugExtractor';
 
 export class PubMedExtractor extends BaseExtractor {
   private readonly BASE_URL = 'https://pubmed.ncbi.nlm.nih.gov';
@@ -23,7 +24,11 @@ export class PubMedExtractor extends BaseExtractor {
   }
 
   async search(context: BrowserContext, query: string, maxResults = 20, signal?: AbortSignal): Promise<PaperMetadata[]> {
+    const start = Date.now();
+    logger.info({ query, maxResults, stage: 'QUERY' }, 'START');
+
     const page = await context.newPage();
+    logger.info({ extractor: this.sourceName, stage: 'PAGE_CREATED' });
     
     const abortHandler = () => {
       page.close().catch(() => {});
@@ -40,13 +45,14 @@ export class PubMedExtractor extends BaseExtractor {
 
     try {
       const searchUrl = `${this.BASE_URL}/?term=${encodeURIComponent(query)}&format=abstract`;
-      await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 180000 });
+      logger.info({ url: searchUrl, stage: 'URL_BUILT' });
 
-      try {
-        await page.waitForSelector('article', { timeout: 15000 });
-      } catch (e) {
-        logger.warn('Timeout waiting for PubMed results container');
-      }
+      await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 180000 });
+      logger.info({ url: page.url(), title: await page.title().catch(()=>''), stage: 'NAVIGATION_OK' });
+
+      await page.waitForLoadState('networkidle').catch(() => {});
+      const cards = page.locator('article.full-docsum');
+      await cards.first().waitFor({ timeout: 10000 }).catch(() => null);
 
       const rawPapers = await page.$$eval(
         'div.search-results-chunk article',
@@ -57,7 +63,7 @@ export class PubMedExtractor extends BaseExtractor {
             const authorNode = article.querySelector('.docsum-authors');
             const pmid = article.getAttribute("data-article-id");
 
-            const title = titleNode?.textContent?.trim() || null;
+            const title = (titleNode as HTMLElement)?.innerText?.trim() || null;
             const relative = titleNode?.getAttribute("href");
             const url = relative ? `https://pubmed.ncbi.nlm.nih.gov${relative}` : null;
 
@@ -69,17 +75,17 @@ export class PubMedExtractor extends BaseExtractor {
             }
 
             let year = null;
-            const citation = journalNode?.textContent;
+            const citation = (journalNode as HTMLElement)?.innerText;
             const match = citation?.match(/(19|20)\d{2}/);
             if (match) year = parseInt(match[0]);
 
-            const authors = authorNode?.textContent?.split(",")
+            const authors = (authorNode as HTMLElement)?.innerText?.split(",")
                 .map(x => x.trim())
                 .filter(Boolean) || [];
 
             return {
                 title,
-                abstract: abstractNode?.textContent?.trim() || null,
+                abstract: (abstractNode as HTMLElement)?.innerText?.trim() || null,
                 doi,
                 url,
                 year,
@@ -89,6 +95,13 @@ export class PubMedExtractor extends BaseExtractor {
             };
         })
       );
+
+      logger.info({ count: rawPapers.length, stage: 'RESULT_COUNT' });
+
+      if (rawPapers.length === 0) {
+        await debugSnapshot(page, this.sourceName, 'zero-results');
+        return [];
+      }
 
       const topPapers = rawPapers.slice(0, Math.min(5, maxResults));
 
@@ -105,16 +118,16 @@ export class PubMedExtractor extends BaseExtractor {
             await detail.goto(p.url, { waitUntil: "domcontentloaded", timeout: 15000 });
             
             // Abstract extraction
-            let extractedAbstract = await detail.locator('.abstract-content.selected').textContent().catch(() => null);
+            let extractedAbstract = await detail.locator('.abstract-content.selected').innerText().catch(() => null);
             if (!extractedAbstract) {
-                extractedAbstract = await detail.locator('.abstract').textContent().catch(() => null);
+                extractedAbstract = await detail.locator('.abstract').innerText().catch(() => null);
             }
             if (extractedAbstract) {
                 fullAbstract = extractedAbstract.replace(/\s+/g, ' ').trim();
             }
 
             // Author extraction
-            const extractedAuthors = await detail.locator('.authors-list .full-name').allTextContents().catch(() => []);
+            const extractedAuthors = await detail.locator('.authors-list .full-name').allInnerTexts().catch(() => []);
             if (extractedAuthors.length > 0) {
                 fullAuthors = [...new Set(
                     extractedAuthors
@@ -124,7 +137,7 @@ export class PubMedExtractor extends BaseExtractor {
             }
 
             // Year extraction
-            const citation = await detail.locator('.cit').textContent().catch(() => '');
+            const citation = await detail.locator('.cit').innerText().catch(() => '');
             if (citation) {
                 const yearMatch = citation.match(/\b(19|20)\d{2}\b/);
                 if (yearMatch) {
@@ -148,14 +161,27 @@ export class PubMedExtractor extends BaseExtractor {
             extractorVersion: this.extractorVersion,
             originatingQuery: query,
           };
-          logger.info(JSON.stringify(paperObj, null, 2));
+
+          logger.info({
+            title: paperObj.title,
+            authors: paperObj.authors,
+            url: paperObj.url,
+            hasAbstract: !!paperObj.abstract,
+            stage: 'PARSED'
+          });
+
           results.push(paperObj);
         })
       );
 
-      logger.info({ count: results.length, query }, 'PubMed extraction complete');
+      logger.info({ stage: 'FINISHED', count: results.length, elapsed: Date.now() - start });
       return results;
+    } catch (err: any) {
+      await debugSnapshot(page, this.sourceName, 'error');
+      logger.error({ err: err.message, stack: err.stack, url: page.url() }, 'EXTRACTOR_FAILED');
+      throw err;
     } finally {
+      logger.info({ stage: 'PAGE_CLOSED' });
       if (signal) signal.removeEventListener('abort', abortHandler);
       await page.close().catch(() => {});
     }
