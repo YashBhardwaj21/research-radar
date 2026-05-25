@@ -26,7 +26,7 @@ export class Deduplicator {
    * Returns the database ID of the paper (existing or new) and a boolean indicating if it was new.
    */
   static async processAndInsert(metadata: PaperMetadata, sourceName: string): Promise<{ paperId: string; isNew: boolean }> {
-    // 1. Check DOI
+    // Check for exact DOI match
     if (metadata.doi) {
       const existingByDoi = await prisma.paper.findUnique({ where: { doi: metadata.doi } });
       if (existingByDoi) {
@@ -35,7 +35,7 @@ export class Deduplicator {
       }
     }
 
-    // 2. Check URL
+    // Check for exact URL match
     if (metadata.url) {
       const existingByUrl = await prisma.paper.findUnique({ where: { url: metadata.url } });
       if (existingByUrl) {
@@ -44,7 +44,7 @@ export class Deduplicator {
       }
     }
 
-    // 3. Check Normalized Title
+    // Check for exact normalized title match
     const normalizedTitle = this.normalizeTitle(metadata.title);
     if (normalizedTitle && normalizedTitle.length > 5) {
       const existingByTitle = await prisma.paper.findFirst({ where: { normalizedTitle } });
@@ -54,7 +54,7 @@ export class Deduplicator {
       }
     }
 
-    // 4. Insert New Record
+    // Check source and prepare for insertion
     const actualSource = metadata.source || sourceName;
     let dbSource = await prisma.source.findUnique({ where: { name: actualSource } });
     if (!dbSource) {
@@ -64,7 +64,7 @@ export class Deduplicator {
       logger.info({ source: actualSource }, 'connectOrCreate source (found)');
     }
 
-    // 3b. Fuzzy Check against recent candidates (same source and year)
+    // Perform fuzzy check against recent candidates for the same source and year
     if (normalizedTitle && normalizedTitle.length > 5 && dbSource) {
       const candidates = await prisma.paper.findMany({
         where: { year: metadata.year, sourceId: dbSource.id },

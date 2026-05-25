@@ -82,11 +82,11 @@ export async function startSearchServer(port = 3000) {
         return reply.send({ ...JSON.parse(cached), warning: "fresh scrape scheduled" });
       }
 
-      // 1. Convert the user's natural language query into a vector
+      // Convert the user's natural language query into a vector
       const queryVector = await embeddingService.generateEmbedding(query);
       const vectorStr = `[${queryVector.join(',')}]`;
 
-      // 2. Build WHERE clause fragments for metadata filters
+      // Build WHERE clause fragments for metadata filters
       const conditions: string[] = [`"embeddingStatus" = 'GENERATED'`];
       const params: any[] = [vectorStr, limit, offset];
       let paramIndex = 4; // $1=vector, $2=limit, $3=offset
@@ -108,7 +108,7 @@ export async function startSearchServer(port = 3000) {
       const pubmedWeight = config.sourceWeights?.pubmed || 1.10;
       const arxivWeight = config.sourceWeights?.arxiv || 1.03;
 
-      // 3. Execute cosine similarity search via raw SQL
+      // Execute cosine similarity search via raw SQL
       const results: SearchResult[] = await prisma.$queryRawUnsafe(`
         SELECT
           p."id",
@@ -132,7 +132,7 @@ export async function startSearchServer(port = 3000) {
         OFFSET $3
       `, ...params);
 
-      // 4. Fetch authors for each paper
+      // Fetch authors for each paper
       const papersWithAuthors = await Promise.all(
         results.map(async (paper) => {
           const authorRows = await prisma.paperAuthor.findMany({
