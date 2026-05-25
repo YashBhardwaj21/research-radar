@@ -301,7 +301,7 @@ LOG_LEVEL="info"
 
 ## Playwright Engineering Decisions
 
-Playwright was chosen over standard HTTP clients (Axios + Cheerio) due to the heavy reliance of modern academic repositories on client-side rendering and bot protection.
+Playwright was chosen over standard HTTP clients (Axios + Cheerio) due to the heavy reliance of modern academic repositories on client-side rendering.
 
 - **Context Pooling**: Instantiating full browsers per request is too slow. The platform maintains a pool of persistent `BrowserContext` instances to reduce overhead.
 - **Request Interception**: `page.route()` is used to aggressively block image, font, and CSS requests to lower bandwidth and speed up extraction.
