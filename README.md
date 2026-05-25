@@ -297,14 +297,14 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/v1/search" `
 
 ## Screenshots
 
-### 1. Worker Lifecycle — Job Initialization & Extractor Startup
+### 1. Queue Orchestration — BullMQ Dashboard
 Shows worker creation, job assignment, extractor startup, timeout configuration, and query execution.
 
 <img width="1600" height="790" alt="Worker Startup Logs" src="https://github.com/user-attachments/assets/41e177d5-bbef-4774-b0d7-a84876f1a42e" />
 
 ---
 
-### 2. Queue Orchestration — BullMQ Dashboard
+### 2. Worker Lifecycle — Job Initialization & Extractor Startup
 Demonstrates asynchronous job execution, completed jobs, retries, and queue state monitoring.
 
 <img width="972" height="1030" alt="BullMQ Queue Dashboard" src="https://github.com/user-attachments/assets/e8bcbdb7-19be-439f-af62-eb7ab26acb20" />
