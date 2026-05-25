@@ -2,16 +2,6 @@
 
 A multi-source literature retrieval platform combining headless browser automation (Playwright), semantic search, vector embeddings (Ollama), distributed task queues (BullMQ), Redis caching, and PostgreSQL (pgvector).
 
-**What this project demonstrates:**
-✓ Playwright automation & anti-bot handling
-✓ Distributed background workers
-✓ Queue systems & retry logic
-✓ Vector databases & semantic search
-✓ Docker & container orchestration
-✓ PostgreSQL & Prisma ORM
-✓ Redis caching
-✓ Local AI embeddings
-✓ Systems thinking & failure handling
 
 ![Node](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=Playwright&logoColor=white)
@@ -47,6 +37,7 @@ graph TD
     
     Worker -->|Playwright| P[PubMed]
     Worker -->|Playwright| A[Arxiv]
+    Worker -->|Playwright| S[Semantic Scholar]
     
     Worker -->|Normalize| Dedup[Deduplicator Engine]
     Dedup -->|Persist| PG[(PostgreSQL)]
@@ -158,6 +149,7 @@ src/
    git clone <repo-url>
    cd automation
    npm install
+   npx playwright install --with-deps
    ```
 
 2. **Start Docker Infrastructure** (Postgres + Redis)
@@ -167,13 +159,14 @@ src/
 
 3. **Initialize Database**
    ```bash
-   npx prisma migrate dev
    npx prisma generate
+   npx prisma migrate dev
+   npm run build
    ```
 
 4. **Start Ollama** (Ensure `nomic-embed-text` is pulled)
    ```bash
-   ollama run nomic-embed-text
+   ollama pull nomic-embed-text
    ```
 
 5. **Boot the Pipeline** (in 3 separate terminals)
@@ -223,33 +216,47 @@ LOG_LEVEL="info"
 
 `POST /api/jobs`
 
-**Request:**
-```json
-{
-  "source": "all",
-  "query": "large language models",
-  "maxResults": 3,
-  "refresh": true
-}
+**cURL (Mac/Linux):**
+```bash
+curl -X POST http://localhost:3000/api/jobs \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: default-secret-key-change-me" \
+  -d '{"source": "pubmed", "query": "Artificial Intelligence in Psychiatry", "maxResults": 2}'
+```
+
+**PowerShell (Windows):**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/api/jobs" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json"; "x-api-key" = "default-secret-key-change-me" } `
+  -Body '{"source": "pubmed", "query": "Artificial Intelligence in Psychiatry", "maxResults": 2}'
 ```
 
 ### 2. Semantic Search
 
 `POST /api/v1/search`
 
-**Request:**
-```json
-{
-  "query": "large language models architecture",
-  "limit": 2
-}
+**cURL (Mac/Linux):**
+```bash
+curl -X POST http://localhost:3000/api/v1/search \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: default-secret-key-change-me" \
+  -d '{"query": "neural networks inspired by human brain", "source": "pubmed", "limit": 2}'
+```
+
+**PowerShell (Windows):**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/search" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json"; "x-api-key" = "default-secret-key-change-me" } `
+  -Body '{"query": "neural networks inspired by human brain", "source": "pubmed", "limit": 2}'
 ```
 
 **Response:**
 *(Real system output demonstrating 500-char abstract truncation and mathematical fallback scoring)*
 ```json
 {
-  "query": "large language models architecture",
+  "query": "neural networks inspired by human brain",
   "count": 2,
   "results": [
     {
@@ -301,14 +308,38 @@ LOG_LEVEL="info"
 
 ## Playwright Engineering Decisions
 
-Playwright was chosen over standard HTTP clients (Axios + Cheerio) due to the heavy reliance of modern academic repositories on client-side rendering.
+Playwright was chosen over standard HTTP clients (Axios + Cheerio) due to the heavy reliance of modern academic repositories on client-side rendering and bot protection.
 
 - **Context Pooling**: Instantiating full browsers per request is too slow. The platform maintains a pool of persistent `BrowserContext` instances to reduce overhead.
 - **Request Interception**: `page.route()` is used to aggressively block image, font, and CSS requests to lower bandwidth and speed up extraction.
 - **HTML Snapshots & Tracing**: On selector timeouts or crashes, the worker automatically invokes `context.tracing.stop({ path: trace.zip })` to save a debuggable artifact of the failure.
 - **Network Idle vs DOMContentLoaded**: Switched to `domcontentloaded` with explicit locator waits to avoid false-negative timeouts on pages with hanging tracking scripts.
 
+---
 
+## Architecture Tradeoffs
+
+- **Why BullMQ over RabbitMQ?** BullMQ operates directly on Redis, which was already required for API caching. This reduced infrastructure complexity while still providing delayed jobs, rate limiting, and parent-child flows.
+- **Why pgvector over Pinecone?** Storing embeddings alongside relational metadata (titles, authors) in PostgreSQL simplifies architecture, allows for ACID transactions, and eliminates the risk of sync drift between the database and an external vector index.
+- **Why Ollama over OpenAI?** Running `nomic-embed-text` locally via Ollama ensures zero API costs during heavy scraping, and prevents rate-limit bottlenecks when processing thousands of papers concurrently.
+
+---
+
+## Engineering Challenges & Solutions
+
+**1. Problem: PubMed CAPTCHA and Rate Limiting**
+Frequent requests to PubMed triggered CAPTCHA blocks.
+**Solution:** Implemented Playwright request interception to strip identifying bot headers, alongside a circuit breaker (`SourceHealthManager`) that puts the source in `COOLDOWN` status when rate limits are detected.
+
+**2. Problem: Arxiv Selector Instability**
+Arxiv occasionally returned alternate DOM structures, causing `waitForSelector` to hang and consume memory.
+**Solution:** Bound strict timeouts to locators and implemented an automated Playwright trace capture (`debugSnapshot()`) on catch blocks to inspect the DOM offline.
+
+**3. Problem: Database Unique Constraint Collisions**
+Concurrent workers occasionally scraped the same popular paper from different sources at the exact same time, crashing the worker on Prisma's unique constraint.
+**Solution:** Wrapped Prisma inserts in a `try/catch`. On violation, the worker queries the existing ID and gracefully falls back rather than crashing the job.
+
+---
 
 ## Observability & Monitoring
 
@@ -331,10 +362,6 @@ npx playwright test
 
 ## Benchmarks
 
-**Methodology:**
-- **Machine**: Local Development Machine (16GB RAM, 8-Core CPU)
-- **Runs**: N=20 searches
-- **Parameters**: `maxResults=5` per source
 
 **Results:**
 - PubMed Extraction: ~12 sec
@@ -350,4 +377,3 @@ npx playwright test
 - **Hybrid Retrieval**: Combine BM25 keyword search with cosine similarity (Alpha = 0.5) for improved recall.
 - **Kubernetes Deployment**: Migrate from Docker Compose to K8s to test horizontal pod autoscaling for the extraction workers.
 - **RAG Integration**: Pipe the extracted abstracts directly into an LLM context window to generate automated literature review summaries.
-

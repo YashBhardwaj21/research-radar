@@ -58,9 +58,14 @@ jobs:
     - name: Run Prisma migrations (check schema validity)
       run: npx prisma migrate deploy || echo "No migrations to deploy"
 
+    - name: Typecheck TypeScript
+      run: npx tsc --noEmit
+
     - name: Build TypeScript
       run: npm run build
 
-    # We will add tests in later milestones
-    # - name: Run tests
-    #   run: npm test
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+
+    - name: Run Playwright E2E tests
+      run: npm test

@@ -10,6 +10,7 @@ import { config } from '../core/config';
 import crypto from 'crypto';
 import Redis from 'ioredis';
 import { QueueManager } from '../queue/QueueManager';
+import { startBullBoard } from '../queue/bull-board';
 
 const pool = new Pool({ connectionString: config.postgresUrl });
 const adapter = new PrismaPg(pool);
@@ -193,6 +194,9 @@ export async function startSearchServer(port = 3000) {
   // Intelligence (M6)
   const { intelligenceRoutes } = require('./intelligence');
   app.register(intelligenceRoutes);
+
+  // Start Bull-board Dashboard on port 3001
+  startBullBoard().catch(err => logger.error({ err }, 'Failed to start Bull Board'));
 
   await app.listen({ port, host: '0.0.0.0' });
   logger.info({ port }, `SearchAPI: Listening on port ${port}`);

@@ -1,9 +1,15 @@
 {
-  "name": "automation",
+  "name": "semantic-aggregation-pipeline",
   "version": "1.0.0",
-  "description": "",
+  "description": "Multi-source literature retrieval platform using Playwright, BullMQ, Redis, pgvector, and semantic embeddings.",
   "main": "index.js",
+  "author": "Yash Bhardwaj",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "test": "playwright test",
     "build": "tsc",
     "start": "node dist/api/search.js",
     "dev": "ts-node src/api/search.ts",
@@ -13,8 +19,6 @@
     "api": "node dist/api/search.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/fast-levenshtein": "^0.0.4",

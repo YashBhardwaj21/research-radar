@@ -75,8 +75,8 @@ export class PubMedExtractor extends BaseExtractor {
             }
 
             let year = null;
-            const citation = (journalNode as HTMLElement)?.innerText;
-            const match = citation?.match(/(19|20)\d{2}/);
+            const citation = (journalNode as HTMLElement)?.textContent || (article as HTMLElement)?.textContent;
+            const match = citation?.match(/\b(19|20)\d{2}\b/);
             if (match) year = parseInt(match[0]);
 
             const authors = (authorNode as HTMLElement)?.innerText?.split(",")
@@ -137,7 +137,10 @@ export class PubMedExtractor extends BaseExtractor {
             }
 
             // Year extraction
-            const citation = await detail.locator('.cit').innerText().catch(() => '');
+            let citation = await detail.locator('.cit').textContent().catch(() => '');
+            if (!citation) {
+                citation = await detail.locator('article, main, body').first().textContent().catch(() => '');
+            }
             if (citation) {
                 const yearMatch = citation.match(/\b(19|20)\d{2}\b/);
                 if (yearMatch) {
