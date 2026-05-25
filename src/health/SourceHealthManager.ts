@@ -26,7 +26,14 @@ export class SourceHealthManager {
     return SourceHealthManager.instance;
   }
 
-  public recordFailure(source: string): void {
+  public recordFailure(source: string, reason?: string): void {
+    if (reason === 'SEMANTIC_CAPTCHA' || reason === 'AWS_CAPTCHA') {
+      logger.warn({ source, reason }, 'SourceHealthManager: AWS Captcha detected! Tripping circuit breaker immediately for 30 minutes.');
+      this.cooldowns.set(source, Date.now() + 30 * 60 * 1000); // 30 mins
+      this.failures.set(source, []);
+      return;
+    }
+
     const now = Date.now();
     const history = this.failures.get(source) || [];
     

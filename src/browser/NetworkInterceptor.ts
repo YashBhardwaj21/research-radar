@@ -20,7 +20,14 @@ export async function captureApiResponse<T>(page: Page, urlPattern: RegExp): Pro
     const handler = async (response: Response) => {
       try {
         const url = response.url();
-        if (urlPattern.test(url) && response.request().resourceType() === 'fetch' || response.request().resourceType() === 'xhr') {
+        
+        logger.debug({
+          url: response.url(),
+          status: response.status(),
+          contentType: response.headers()['content-type']
+        }, "NetworkInterceptor: Raw response");
+
+        if (urlPattern.test(url) && (response.request().resourceType() === 'fetch' || response.request().resourceType() === 'xhr')) {
           // Check for successful status
           if (response.status() >= 200 && response.status() < 300) {
             clearTimeout(timeout);

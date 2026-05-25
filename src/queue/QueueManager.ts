@@ -17,8 +17,7 @@ export const scrapeQueue = new Queue<ScrapeJobPayload>(QUEUE_NAME, {
   defaultJobOptions: {
     attempts: 3,
     backoff: {
-      type: 'exponential',
-      delay: 5000, // 5s, 20s, 60s
+      type: 'jitter',
     },
     removeOnComplete: 100,
     removeOnFail: 500,
@@ -57,19 +56,37 @@ export class QueueManager {
   /**
    * Enqueues a job. Uses deterministic jobId to prevent duplicate ingestion.
    */
-  public async enqueue(source: ScrapeJobPayload['source'], query: string, maxResults = 10): Promise<string> {
+  public async enqueue(source: ScrapeJobPayload['source'], query: string, maxResults = 10, priority = 10, refresh = false): Promise<string> {
     const job_id = crypto.randomUUID();
 
     await scrapeQueue.add(
       QUEUE_NAME,
-      { job_id, source, query, maxResults },
+      { job_id, source, query, maxResults, refresh },
       {
         jobId: job_id,
+        priority, // 1 is highest priority, higher numbers are lower priority in BullMQ
       }
     );
 
-    logger.info({ job_id, source, query }, 'QueueManager: Job enqueued');
+    logger.info({ job_id, source, query, priority }, 'QueueManager: Job enqueued');
     return job_id;
+  }
+
+  /**
+   * Schedules a weekly recrawl for a query.
+   */
+  public async scheduleRecrawl(source: ScrapeJobPayload['source'], query: string): Promise<void> {
+    const job_id = `cron-${source}-${query}`.replace(/[^a-zA-Z0-9-]/g, '-');
+    await scrapeQueue.add(
+      QUEUE_NAME,
+      { job_id, source, query, maxResults: 50 },
+      {
+        jobId: job_id,
+        priority: 20, // Lower priority
+        repeat: { pattern: '0 0 * * 0' }, // Every Sunday
+      }
+    );
+    logger.info({ job_id, source, query }, 'QueueManager: Scheduled recrawl');
   }
 
   /**
@@ -84,6 +101,18 @@ export class QueueManager {
       scrapeQueue.getCompletedCount(),
     ]);
     return { active, waiting, failed, delayed, completed };
+  }
+
+  /**
+   * Retries all failed jobs in the queue
+   */
+  public async retryFailedJobs(): Promise<number> {
+    const failedJobs = await scrapeQueue.getFailed();
+    for (const job of failedJobs) {
+      await job.retry();
+    }
+    logger.info({ count: failedJobs.length }, 'QueueManager: Retried failed jobs');
+    return failedJobs.length;
   }
 
   private attachEventListeners(): void {

@@ -18,8 +18,24 @@ export class PubMedExtractor extends BaseExtractor {
     return 'pubmed';
   }
 
-  async search(context: BrowserContext, query: string, maxResults = 20): Promise<PaperMetadata[]> {
+  get extractorVersion(): string {
+    return 'v1.0.0';
+  }
+
+  async search(context: BrowserContext, query: string, maxResults = 20, signal?: AbortSignal): Promise<PaperMetadata[]> {
     const page = await context.newPage();
+    
+    const abortHandler = () => {
+      page.close().catch(() => {});
+    };
+    if (signal) {
+      if (signal.aborted) {
+        await page.close().catch(() => {});
+        throw new Error('AbortError');
+      }
+      signal.addEventListener('abort', abortHandler);
+    }
+
     const results: PaperMetadata[] = [];
 
     try {
@@ -128,7 +144,9 @@ export class PubMedExtractor extends BaseExtractor {
             doi: p.doi || undefined,
             year: fullYear,
             source: p.source,
-            url: p.url
+            url: p.url,
+            extractorVersion: this.extractorVersion,
+            originatingQuery: query,
           };
           logger.info(JSON.stringify(paperObj, null, 2));
           results.push(paperObj);
@@ -138,7 +156,8 @@ export class PubMedExtractor extends BaseExtractor {
       logger.info({ count: results.length, query }, 'PubMed extraction complete');
       return results;
     } finally {
-      await page.close();
+      if (signal) signal.removeEventListener('abort', abortHandler);
+      await page.close().catch(() => {});
     }
   }
 

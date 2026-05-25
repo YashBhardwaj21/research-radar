@@ -6,11 +6,16 @@ import { EmbeddingService } from '../processing/EmbeddingService';
 import { logger } from '../core/logger';
 import { searchLatencySeconds } from '../observability/metrics';
 import { config } from '../core/config';
+import crypto from 'crypto';
+import Redis from 'ioredis';
+import { QueueManager } from '../queue/QueueManager';
 
 const pool = new Pool({ connectionString: config.postgresUrl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 const embeddingService = new EmbeddingService();
+const redisClient = new Redis(config.redisUrl);
+const queueManager = new QueueManager();
 
 interface SearchRequestBody {
   query: string;
@@ -35,11 +40,28 @@ interface SearchResult {
 export async function startSearchServer(port = 3000) {
   const app = Fastify({ loggerInstance: logger });
 
+  // Rate Limiting
+  app.register(require('@fastify/rate-limit'), {
+    max: 100,
+    timeWindow: '1 minute'
+  });
+
+  // Auth Middleware
+  app.addHook('onRequest', async (request, reply) => {
+    // Skip auth for health/metrics endpoints
+    if (request.url.startsWith('/health') || request.url.startsWith('/metrics')) return;
+    
+    const apiKey = request.headers['x-api-key'];
+    if (apiKey !== config.apiKey) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+  });
+
   // Swagger Docs
   const { setupSwagger } = require('./swagger');
   await setupSwagger(app);
 
-  app.post<{ Body: SearchRequestBody }>('/api/search', async (request, reply) => {
+  const searchHandler = async (request: any, reply: any) => {
     const { query, source, year_min, limit = 10, offset = 0 } = request.body;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
@@ -47,8 +69,18 @@ export async function startSearchServer(port = 3000) {
     }
 
     const endTimer = searchLatencySeconds.startTimer();
+    const cacheKey = `search:${crypto.createHash('sha256').update(JSON.stringify(request.body)).digest('hex')}`;
 
     try {
+      // Check cache first (Stale-while-revalidate)
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        endTimer();
+        queueManager.enqueue('arxiv', query, limit, 20).catch(() => {});
+        queueManager.enqueue('pubmed', query, limit, 20).catch(() => {});
+        return reply.send({ ...JSON.parse(cached), warning: "fresh scrape scheduled" });
+      }
+
       // 1. Convert the user's natural language query into a vector
       const queryVector = await embeddingService.generateEmbedding(query);
       const vectorStr = `[${queryVector.join(',')}]`;
@@ -72,6 +104,9 @@ export async function startSearchServer(port = 3000) {
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+      const pubmedWeight = config.sourceWeights?.pubmed || 1.10;
+      const arxivWeight = config.sourceWeights?.arxiv || 1.03;
+
       // 3. Execute cosine similarity search via raw SQL
       const results: SearchResult[] = await prisma.$queryRawUnsafe(`
         SELECT
@@ -82,11 +117,16 @@ export async function startSearchServer(port = 3000) {
           p."url",
           p."year",
           s."name" AS "source",
-          1 - (p."embedding" <=> $1::vector) AS "similarity"
+          (1 - (p."embedding" <=> $1::vector)) * 
+            CASE s."name" 
+              WHEN 'pubmed' THEN ${pubmedWeight} 
+              WHEN 'arxiv' THEN ${arxivWeight} 
+              ELSE 1.0 
+            END AS "similarity"
         FROM "Paper" p
         JOIN "Source" s ON p."sourceId" = s."id"
         ${whereClause}
-        ORDER BY p."embedding" <=> $1::vector
+        ORDER BY similarity DESC
         LIMIT $2
         OFFSET $3
       `, ...params);
@@ -108,18 +148,30 @@ export async function startSearchServer(port = 3000) {
 
       endTimer();
 
-      return reply.send({
+      const responsePayload = {
         query,
         count: papersWithAuthors.length,
         results: papersWithAuthors,
-      });
+      };
+
+      // Cache for 1 hour
+      await redisClient.set(cacheKey, JSON.stringify(responsePayload), 'EX', 3600);
+
+      // Enqueue fresh background scrape (low priority)
+      queueManager.enqueue('arxiv', query, limit, 20).catch(() => {});
+      queueManager.enqueue('pubmed', query, limit, 20).catch(() => {});
+
+      return reply.send({ ...responsePayload, warning: "fresh scrape scheduled" });
 
     } catch (err: any) {
       endTimer();
       logger.error({ err: err.message }, 'SearchAPI: Query failed');
       return reply.status(500).send({ error: 'Internal server error during search.' });
     }
-  });
+  };
+
+  app.post<{ Body: SearchRequestBody }>('/api/v1/search', searchHandler);
+  app.post<{ Body: SearchRequestBody }>('/api/search', searchHandler); // legacy alias
 
   // Health check
   const { healthRoutes } = require('./health');

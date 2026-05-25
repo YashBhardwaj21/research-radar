@@ -20,4 +20,15 @@ export class ExtractorFactory {
         throw new Error(`Unsupported extraction source: ${source}`);
     }
   }
+
+  /**
+   * Returns instances of all available extractors for aggregate search.
+   */
+  public static getAllExtractors(): BaseExtractor[] {
+    return [
+      new PubMedExtractor(),
+      new ArxivExtractor(),
+      new SemanticScholarExtractor()
+    ];
+  }
 }

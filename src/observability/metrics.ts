@@ -1,4 +1,4 @@
-import { Registry, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
+import { Registry, Counter, Histogram, Summary, Gauge, collectDefaultMetrics } from 'prom-client';
 
 // Single shared registry for the entire process
 export const registry = new Registry();
@@ -22,11 +22,11 @@ export const scrapeErrorsTotal = new Counter({
   registers: [registry],
 });
 
-export const extractionDurationSeconds = new Histogram({
+export const extractionDurationSeconds = new Summary({
   name: 'extraction_duration_seconds',
   help: 'Duration of extraction jobs in seconds',
   labelNames: ['source'],
-  buckets: [1, 5, 10, 30, 60, 120],
+  percentiles: [0.5, 0.9, 0.95, 0.99],
   registers: [registry],
 });
 
@@ -98,10 +98,10 @@ export const embeddingDurationSeconds = new Histogram({
   registers: [registry],
 });
 
-export const searchLatencySeconds = new Histogram({
+export const searchLatencySeconds = new Summary({
   name: 'search_latency_seconds',
   help: 'Duration of vector search queries in seconds',
-  buckets: [0.01, 0.05, 0.1, 0.2, 0.5, 1],
+  percentiles: [0.5, 0.9, 0.95, 0.99],
   registers: [registry],
 });
 

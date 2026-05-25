@@ -10,6 +10,8 @@ export interface PaperMetadata {
   source: string;
   url: string;
   pdfUrl?: string;
+  extractorVersion?: string;
+  originatingQuery?: string;
 }
 
 export abstract class BaseExtractor {
@@ -17,11 +19,12 @@ export abstract class BaseExtractor {
   // and injects it. This allows the Orchestrator to force-kill the context on timeouts.
 
   abstract get sourceName(): string;
+  abstract get extractorVersion(): string;
 
   /**
    * Search for papers given a query
    */
-  abstract search(context: BrowserContext, query: string, maxResults?: number): Promise<PaperMetadata[]>;
+  abstract search(context: BrowserContext, query: string, maxResults?: number, signal?: AbortSignal): Promise<PaperMetadata[]>;
 
   /**
    * Extract details from a specific paper URL

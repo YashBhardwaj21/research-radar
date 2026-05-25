@@ -19,15 +19,39 @@ export class ArxivExtractor extends BaseExtractor {
     return 'arxiv';
   }
 
-  async search(context: BrowserContext, query: string, maxResults = 20): Promise<PaperMetadata[]> {
+  get extractorVersion(): string {
+    return 'v1.0.0';
+  }
+
+  async search(context: BrowserContext, query: string, maxResults = 20, signal?: AbortSignal): Promise<PaperMetadata[]> {
     const page = await context.newPage();
+    
+    const abortHandler = () => {
+      page.close().catch(() => {});
+    };
+    if (signal) {
+      if (signal.aborted) {
+        await page.close().catch(() => {});
+        throw new Error('AbortError');
+      }
+      signal.addEventListener('abort', abortHandler);
+    }
+
     const results: PaperMetadata[] = [];
 
     try {
       await blockAdsAndTrackers(page);
 
       const searchUrl = `${this.BASE_URL}/search/?searchtype=all&query=${encodeURIComponent(query)}`;
-      await safeGoto(page, searchUrl);
+      await safeGoto(page, searchUrl, 3, 'domcontentloaded');
+      
+      // Wait for content to stabilize
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      logger.info({
+        url: page.url(),
+        title: await page.title().catch(()=>'')
+      }, 'Arxiv loaded');
 
       const resultCards = await page.locator(this.SELECTORS.results).all();
       logger.debug({ count: resultCards.length }, 'ArXiv: Found result cards');
@@ -40,13 +64,18 @@ export class ArxivExtractor extends BaseExtractor {
         const abstractEl = card.locator(this.SELECTORS.abstract);
         const linkEl = card.locator(this.SELECTORS.arxivId);
 
-        const title = await titleEl.textContent().catch(() => null);
+        const title = await titleEl.first().textContent().catch(() => null);
         if (!title) continue;
 
-        const authorsText = await authorsEl.textContent().catch(() => '');
-        const abstract = await abstractEl.textContent().catch(() => undefined);
-        const href = await linkEl.getAttribute('href').catch(() => null);
-        const url = href ? `https://arxiv.org${href}` : `${this.BASE_URL}/search/`;
+        const authorsText = await authorsEl.first().textContent().catch(() => '');
+        const abstract = await abstractEl.first().textContent().catch(() => undefined);
+        const href = await linkEl.first().getAttribute('href').catch((err) => {
+          logger.warn({ err: err.message }, 'Arxiv href extraction failed');
+          return null;
+        });
+        const url = href ? (href.startsWith('http') ? href : `https://arxiv.org${href}`) : `${this.BASE_URL}/search/`;
+
+        logger.info({ title: title.trim(), paperUrl: url }, 'Arxiv parsed');
 
         results.push({
           title: title.trim(),
@@ -56,13 +85,16 @@ export class ArxivExtractor extends BaseExtractor {
           abstract: abstract?.trim(),
           source: this.sourceName,
           url,
+          extractorVersion: this.extractorVersion,
+          originatingQuery: query,
         });
       }
 
       logger.info({ count: results.length, query }, 'ArXiv extraction complete');
       return results;
     } finally {
-      await page.close();
+      if (signal) signal.removeEventListener('abort', abortHandler);
+      await page.close().catch(() => {});
     }
   }
 

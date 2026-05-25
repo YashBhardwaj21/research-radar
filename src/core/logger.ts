@@ -6,6 +6,8 @@ export interface LogContext {
   job_id?: string;
   source?: string;
   worker_id?: string;
+  requestId?: string;
+  traceId?: string;
 }
 
 export const logContext = new AsyncLocalStorage<LogContext>();

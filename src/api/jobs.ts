@@ -23,13 +23,23 @@ export async function jobsRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/api/jobs', async (request, reply) => {
-    const { source, query, maxResults } = request.body as any;
+    const { source, query, maxResults, refresh } = request.body as any;
 
     if (!source || !query) {
       return reply.status(400).send({ error: "Missing source or query" });
     }
 
-    const jobId = await queueManager.enqueue(source, query, maxResults ?? 10);
+    const jobId = await queueManager.enqueue(source, query, maxResults ?? 10, 10, refresh === true);
     return reply.status(202).send({ jobId });
+  });
+
+  fastify.post('/api/admin/replay-failed', async (_request, reply) => {
+    try {
+      const count = await queueManager.retryFailedJobs();
+      return reply.status(200).send({ status: 'ok', retriedCount: count });
+    } catch (error: any) {
+      fastify.log.error(error, 'Failed to replay failed jobs');
+      return reply.status(500).send({ error: 'Failed to replay failed jobs' });
+    }
   });
 }

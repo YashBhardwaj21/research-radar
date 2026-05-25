@@ -57,12 +57,20 @@ model Paper {
   source          Source          @relation(fields: [sourceId], references: [id])
 
   // 768 dimensions for nomic-embed-text
-  embedding       Unsupported("vector(768)")?
-  embeddingStatus EmbeddingStatus @default(PENDING)
+  embedding        Unsupported("vector(768)")?
+  embeddingStatus  EmbeddingStatus @default(PENDING)
 
-  authors         PaperAuthor[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  // Provenance & Diagnostics
+  scrapedAt        DateTime?
+  extractorVersion String?
+  originatingQuery String?
+  embeddingModel   String?
+  pipelineVersion  String?
+  metadata         Json?
+
+  authors          PaperAuthor[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([year])
   @@index([sourceId])

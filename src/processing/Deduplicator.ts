@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PaperMetadata } from '../extractors/BaseExtractor';
 import { logger } from '../core/logger';
 import { config } from '../core/config';
+import levenshtein from 'fast-levenshtein';
+import { PaperMetadata } from '../extractors/BaseExtractor';
 
 const pool = new Pool({ connectionString: config.postgresUrl });
 const adapter = new PrismaPg(pool);
@@ -54,15 +55,41 @@ export class Deduplicator {
     }
 
     // 4. Insert New Record
-    let dbSource = await prisma.source.findUnique({ where: { name: sourceName } });
+    const actualSource = metadata.source || sourceName;
+    let dbSource = await prisma.source.findUnique({ where: { name: actualSource } });
     if (!dbSource) {
-      dbSource = await prisma.source.create({ data: { name: sourceName } });
+      dbSource = await prisma.source.create({ data: { name: actualSource } });
+      logger.info({ source: actualSource }, 'connectOrCreate source (created)');
+    } else {
+      logger.info({ source: actualSource }, 'connectOrCreate source (found)');
+    }
+
+    // 3b. Fuzzy Check against recent candidates (same source and year)
+    if (normalizedTitle && normalizedTitle.length > 5 && dbSource) {
+      const candidates = await prisma.paper.findMany({
+        where: { year: metadata.year, sourceId: dbSource.id },
+        select: { id: true, normalizedTitle: true },
+        take: 500, // limit to recent for performance
+        orderBy: { createdAt: 'desc' }
+      });
+
+      for (const candidate of candidates) {
+        if (!candidate.normalizedTitle) continue;
+        const distance = levenshtein.get(normalizedTitle, candidate.normalizedTitle);
+        const maxLen = Math.max(normalizedTitle.length, candidate.normalizedTitle.length);
+        const similarity = 1 - (distance / maxLen);
+
+        if (similarity >= config.titleSimThreshold) {
+          logger.debug({ title: metadata.title, similarity }, 'Deduplicator: Duplicate found via Fuzzy Title');
+          return { paperId: candidate.id, isNew: false };
+        }
+      }
     }
 
     // Insert Authors safely. We can use connectOrCreate for the Many-to-Many relationship.
     const authorConnectOrCreate = metadata.authors
-      .filter(a => a && a.trim().length > 0)
-      .map((authorName) => ({
+      .filter((a: string) => a && a.trim().length > 0)
+      .map((authorName: string) => ({
         author: {
           connectOrCreate: {
             where: { name: authorName.trim() },
@@ -70,6 +97,8 @@ export class Deduplicator {
           }
         }
       }));
+
+    logger.info({ title: metadata.title, source: actualSource, url: metadata.url }, 'Deduplicator: Paper before insert');
 
     try {
       const newPaper = await prisma.paper.create({
@@ -81,6 +110,10 @@ export class Deduplicator {
           url: metadata.url,
           year: metadata.year,
           sourceId: dbSource.id,
+          scrapedAt: new Date(),
+          extractorVersion: metadata.extractorVersion || 'unknown',
+          originatingQuery: metadata.originatingQuery || 'unknown',
+          embeddingModel: config.embeddingModel,
           authors: {
             create: authorConnectOrCreate
           }

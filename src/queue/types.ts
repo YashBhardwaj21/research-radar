@@ -1,10 +1,11 @@
-export type ScrapeSource = 'pubmed' | 'arxiv' | 'semanticscholar';
+export type ScrapeSource = 'pubmed' | 'arxiv' | 'semanticscholar' | 'all';
 
 export interface ScrapeJobPayload {
   job_id: string;       // Deterministic: hash(source + query)
   source: ScrapeSource;
   query: string;
   maxResults?: number;
+  refresh?: boolean;
 }
 
 // Errors that should bypass retries and go directly to Dead Letter Queue

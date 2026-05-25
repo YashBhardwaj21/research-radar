@@ -25,20 +25,14 @@ export class JobRunner {
     let timeoutId: NodeJS.Timeout | null = null;
 
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(async () => {
-          logger.warn({ job_id: payload.job_id }, 'JobRunner: Timeout — force-closing pages and context.');
-          for (const page of context.pages()) {
-            await page.close().catch(() => {});
-          }
-          await pool.releaseContext(context);
-          reject(new Error(`Job ${payload.job_id} timed out after ${JobRunner.TIMEOUT_MS}ms`));
-        }, JobRunner.TIMEOUT_MS);
-      });
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => {
+        logger.warn({ job_id: payload.job_id }, 'JobRunner: Timeout — aborting extraction.');
+        controller.abort();
+      }, JobRunner.TIMEOUT_MS);
 
       const extractor = ExtractorFactory.getExtractor(payload.source);
-      const extractionPromise = extractor.search(context, payload.query, payload.maxResults);
-      const results = await Promise.race([extractionPromise, timeoutPromise]);
+      const results = await extractor.search(context, payload.query, payload.maxResults, controller.signal);
       return results;
 
     } catch (err: any) {

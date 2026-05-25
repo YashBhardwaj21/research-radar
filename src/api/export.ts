@@ -9,7 +9,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 interface ExportRequestBody {
-  format: 'csv' | 'json' | 'bibtex';
+  format: 'csv' | 'json' | 'bibtex' | 'vectors';
   limit?: number;
 }
 
@@ -17,8 +17,8 @@ export async function exportRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: ExportRequestBody }>('/api/export', async (request, reply) => {
     const { format, limit = 100 } = request.body;
 
-    if (!['csv', 'json', 'bibtex'].includes(format)) {
-      return reply.status(400).send({ error: 'Invalid format. Use csv, json, or bibtex' });
+    if (!['csv', 'json', 'bibtex', 'vectors'].includes(format)) {
+      return reply.status(400).send({ error: 'Invalid format. Use csv, json, bibtex, or vectors' });
     }
 
     try {
@@ -36,6 +36,15 @@ export async function exportRoutes(fastify: FastifyInstance) {
       if (format === 'json') {
         reply.header('Content-Type', 'application/json');
         return reply.send(papers);
+      }
+
+      if (format === 'vectors') {
+        reply.header('Content-Type', 'application/json');
+        reply.header('Content-Disposition', 'attachment; filename="vectors.json"');
+        const papersWithVectors = await prisma.$queryRawUnsafe(`
+          SELECT id, title, embedding::text as vector FROM "Paper" WHERE embedding IS NOT NULL LIMIT $1
+        `, limit);
+        return reply.send(papersWithVectors);
       }
 
       if (format === 'csv') {

@@ -17,6 +17,7 @@
   "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@types/fast-levenshtein": "^0.0.4",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
     "prisma": "^7.8.0",
@@ -25,12 +26,14 @@
   "dependencies": {
     "@bull-board/api": "^7.1.5",
     "@bull-board/fastify": "^7.1.5",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bullmq": "^5.77.1",
     "dotenv": "^17.4.2",
+    "fast-levenshtein": "^3.0.0",
     "fastify": "^5.8.5",
     "ioredis": "^5.10.1",
     "pg": "^8.21.0",
