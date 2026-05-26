@@ -71,21 +71,10 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: [
-    {
-      command: 'npm run api',
-      url: 'http://localhost:3000/api/health',
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'npm run worker',
-      url: 'http://localhost:3000/api/health',
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'npm run embedding-worker',
-      url: 'http://localhost:3000/api/health',
-      reuseExistingServer: !process.env.CI,
-    }
-  ],
+  webServer: {
+    command: 'npm run start-all',
+    url: 'http://localhost:3000/api/health',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120000
+  },
 });

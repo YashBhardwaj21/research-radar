@@ -16,7 +16,8 @@
     "replay-job": "node scripts/replay-job.js",
     "worker": "node dist/queue/worker.js",
     "embedding-worker": "node dist/queue/embeddingWorker.js",
-    "api": "node dist/api/search.js"
+    "api": "node dist/api/search.js",
+    "start-all": "node scripts/start-all.js"
   },
   "keywords": [],
   "devDependencies": {
