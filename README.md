@@ -37,7 +37,6 @@ graph TD
     
     Worker -->|Playwright| P[PubMed]
     Worker -->|Playwright| A[Arxiv]
-    Worker -->|Playwright| S[Semantic Scholar]
     
     Worker -->|Normalize| Dedup[Deduplicator Engine]
     Dedup -->|Persist| PG[(PostgreSQL)]
@@ -56,42 +55,42 @@ graph TD
 
 ## Database Schema
 
-```mermaid
-erDiagram
-    Source ||--o{ Paper : "contains"
-    Paper ||--o{ PaperAuthor : "has"
-    Author ||--o{ PaperAuthor : "writes"
-    
-    Source {
-        String id PK
-        String name UK
-        String health
-    }
-    
-    Paper {
-        String id PK
-        String title
-        String abstract
-        String doi UK
-        String url UK
-        Int year
-        String sourceId FK
-        Unsupported embedding "vector(768)"
-        DateTime scrapedAt
-    }
-    
-    Author {
-        String id PK
-        String name UK
-    }
-    
-    ScrapeJob {
-        String id PK
-        String status
-        Int retries
-        DateTime startedAt
-    }
-```
+### Core Entities
+
+#### `Source`
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| **`id`** | `String` | Primary Key | Unique UUID |
+| **`name`** | `String` | Unique | Name of the repository (e.g., pubmed, arxiv) |
+| **`health`** | `Enum` | | Current API health (`HEALTHY`, `COOLDOWN`) |
+
+#### `Paper`
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| **`id`** | `String` | Primary Key | Unique UUID |
+| **`title`** | `String` | | Full title of the paper |
+| **`abstract`** | `String` | Nullable | Summary of the paper |
+| **`doi`** | `String` | Unique | Digital Object Identifier |
+| **`url`** | `String` | Unique | Canonical URL to the paper |
+| **`year`** | `Int` | Nullable | Year of publication |
+| **`sourceId`** | `String` | Foreign Key | References `Source.id` |
+| **`embedding`**| `Vector(768)`| Nullable | Generated `nomic-embed-text` pgvector |
+
+#### `Author`
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| **`id`** | `String` | Primary Key | Unique UUID |
+| **`name`** | `String` | Unique | Full name of the author |
+
+#### `ScrapeJob`
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| **`id`** | `String` | Primary Key | Job ID from BullMQ |
+| **`status`** | `Enum` | | `PENDING`, `RUNNING`, `FAILED`, `COMPLETED` |
+| **`retries`** | `Int` | Default `0` | Number of times the job has been retried |
+| **`startedAt`**| `DateTime` | | When the extraction started |
+
+*Note: `Paper` and `Author` are linked via a many-to-many join table `PaperAuthor`.*
 
 ---
 
