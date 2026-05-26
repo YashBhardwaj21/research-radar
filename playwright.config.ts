@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Check if we're running E2E tests based on the CLI arguments
+const isE2E = process.argv.some(arg => arg.includes('tests/e2e') || arg.includes('tests\\e2e'));
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -71,10 +74,10 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
+  webServer: isE2E ? {
     command: 'npm run start-all',
     url: 'http://localhost:3000/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 120000
-  },
+  } : undefined,
 });
