@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { EmbeddingService } from '../processing/EmbeddingService';
+import { embeddingProvider } from '../processing/embeddings';
 import { formatPaper } from '../processing/PaperFormatter';
 import { logger } from '../core/logger';
 import { searchLatencySeconds } from '../observability/metrics';
@@ -15,7 +15,6 @@ import { startBullBoard } from '../queue/bull-board';
 const pool = new Pool({ connectionString: config.postgresUrl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
-const embeddingService = new EmbeddingService();
 const redisClient = new Redis(config.redisUrl);
 const queueManager = new QueueManager();
 
@@ -84,7 +83,18 @@ export async function startSearchServer(port = 3000) {
       }
 
       // Convert the user's natural language query into a vector
-      const queryVector = await embeddingService.generateEmbedding(query);
+      let queryVector: number[];
+      try {
+        queryVector = await embeddingProvider.generate(query);
+      } catch (err: any) {
+        logger.error({ dependency: 'ollama', err: err.message }, 'Failed to generate embedding for search query');
+        return reply.status(503).send({
+          error: "Embedding service unavailable",
+          dependency: "ollama",
+          status: 503
+        });
+      }
+      
       const vectorStr = `[${queryVector.join(',')}]`;
 
       // Build WHERE clause fragments for metadata filters

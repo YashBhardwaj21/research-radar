@@ -10,6 +10,10 @@
   },
   "scripts": {
     "test": "playwright test",
+    "test:unit": "playwright test tests/unit",
+    "test:integration": "playwright test tests/integration",
+    "test:e2e": "playwright test tests/e2e",
+    "seed:test": "ts-node prisma/seed-test.ts",
     "build": "tsc",
     "start": "node dist/api/search.js",
     "dev": "ts-node src/api/search.ts",

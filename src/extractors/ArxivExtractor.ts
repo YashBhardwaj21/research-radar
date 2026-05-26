@@ -115,10 +115,10 @@ export class ArxivExtractor extends BaseExtractor {
           abstract: cleanAbstract,
           source: this.sourceName,
           url: url as string,
-          pdf,
+          pdfUrl: pdf,
           extractorVersion: this.extractorVersion,
           originatingQuery: query,
-        } as PaperMetadata & { pdf?: string });
+        } as PaperMetadata);
       }
 
       logger.info({ stage: 'FINISHED', count: results.length, elapsed: Date.now() - start });

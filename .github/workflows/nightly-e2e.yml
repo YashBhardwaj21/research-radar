@@ -1,13 +1,13 @@
-name: CI
+name: Nightly E2E
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  schedule:
+    # Run every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # allow manual triggering
 
 jobs:
-  build:
+  e2e:
     runs-on: ubuntu-latest
 
     services:
@@ -38,7 +38,9 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pipeline
       POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/pipeline
       REDIS_URL: redis://localhost:6379/0
+      # Nightly E2E will hit live sites, but we still mock Ollama to speed up CI
       OLLAMA_BASE_URL: http://localhost:11434
+      CI: true
 
     steps:
     - uses: actions/checkout@v4
@@ -55,11 +57,11 @@ jobs:
     - name: Generate Prisma client
       run: npx prisma generate
 
-    - name: Run Prisma migrations (check schema validity)
+    - name: Run Prisma migrations
       run: npx prisma migrate deploy
 
-    - name: Typecheck TypeScript
-      run: npx tsc --noEmit
+    - name: Seed test database
+      run: npm run seed:test
 
     - name: Build TypeScript
       run: npm run build
@@ -67,8 +69,5 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install --with-deps
 
-    - name: Seed test database
-      run: npm run seed:test
-
-    - name: Run Playwright Integration tests
-      run: npm run test:integration
+    - name: Run Playwright E2E tests (Live Sites)
+      run: npm run test:e2e

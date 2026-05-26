@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { EmbeddingJobPayload } from './types';
-import { EmbeddingService } from '../processing/EmbeddingService';
+import { embeddingProvider } from '../processing/embeddings';
 import { logContext, logger } from '../core/logger';
 import { config } from '../core/config';
 import {
@@ -21,7 +21,6 @@ const connection = {
 const pool = new Pool({ connectionString: config.postgresUrl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
-const embeddingService = new EmbeddingService();
 
 async function startEmbeddingWorker() {
   const bullWorker = new Worker<EmbeddingJobPayload>(
@@ -35,8 +34,8 @@ async function startEmbeddingWorker() {
         const endTimer = embeddingDurationSeconds.startTimer();
 
         try {
-          // 1. Generate embedding via Ollama
-          const vector = await embeddingService.generateEmbedding(textToEmbed);
+          // 1. Generate embedding via DI provider
+          const vector = await embeddingProvider.generate(textToEmbed);
 
           // 2. Write vector to DB using raw SQL (Prisma doesn't natively support pgvector writes)
           const vectorStr = `[${vector.join(',')}]`;
