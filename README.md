@@ -169,11 +169,9 @@ src/
    ollama pull nomic-embed-text
    ```
 
-5. **Boot the Pipeline** (in 3 separate terminals)
+5. **Boot the Pipeline**
    ```bash
-   npm run api
-   npm run worker
-   npm run embedding-worker
+   npm run start-all
    ```
 
 ### Environment Variables
