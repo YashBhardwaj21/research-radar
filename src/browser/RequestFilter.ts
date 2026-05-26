@@ -35,7 +35,7 @@ export async function blockAdsAndTrackers(page: Page): Promise<void> {
       }
     }
 
-    return route.continue();
+    return route.fallback();
   });
 
   logger.debug('RequestFilter: Attached Ad/Tracker blocking to page');
