@@ -295,14 +295,48 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/v1/search" `
 
 ---
 
+## Debugging & Observability
+
+### 1. Queue Dashboard (BullMQ)
+The platform includes an embedded UI to monitor distributed background jobs.
+1. Run `npm run api` (ensure you have compiled the code first with `npm run build`).
+2. Open your browser and navigate to: **http://localhost:3001/ui**
+3. You will see a dashboard showing all active, pending, completed, and failed scraping jobs across the queues.
+
+### 2. Visual Playwright Scraping
+By default, the platform scrapes the literature sources headlessly (invisible to the user). If you want to visually observe what the robots are doing:
+1. Open your `.env` file and change `BROWSER_HEADLESS=true` to `BROWSER_HEADLESS=false`.
+2. Restart `npm run worker`. 
+3. When you trigger a scrape job, an actual Chromium browser window will pop up, allowing you to watch the automation in real-time.
+
+### 3. Playwright Trace Viewer (For E2E Tests)
+If one of the automated tests fails (e.g., when running `npx playwright test`), Playwright will automatically generate a trace zip file. To open the time-travel trace viewer, run:
+```bash
+npx playwright show-trace test-results/<name-of-failed-test-folder>/trace.zip
+```
+This launches a UI where you can scrub through a timeline of exactly what the browser did before the test failed, including network requests, console logs, and DOM snapshots.
+
+---
+
 ## Screenshots
 
-*(Placeholders for repository visual assets)*
+### 1. BullMQ Queue Dashboard
+![Queue Dashboard](./assets/queue-dashboard.png)
 
-- **Architecture:** `![Architecture](docs/images/architecture.png)`
-- **Search Results:** `![Search Results](docs/images/search_results.png)`
-- **Worker Logs:** `![Worker Logs](docs/images/worker_logs.png)`
-- **Prometheus Metrics:** `![Metrics](docs/images/metrics.png)`
+### 2. API Response (PowerShell)
+![API Response](./assets/api-response.png)
+
+### 3. Worker Terminal Logs (Job Start)
+![Worker Logs - Start](./assets/worker-logs-1.png)
+
+### 4. Worker Terminal Logs (Navigation)
+![Worker Logs - Navigation](./assets/worker-logs-2.png)
+
+### 5. Worker Terminal Logs (Extraction)
+![Worker Logs - Extraction](./assets/worker-logs-3.png)
+
+### 6. Worker Terminal Logs (Deduplication & Persistence)
+![Worker Logs - Deduplication](./assets/worker-logs-4.png)
 
 ---
 
