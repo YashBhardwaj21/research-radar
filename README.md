@@ -320,23 +320,47 @@ This launches a UI where you can scrub through a timeline of exactly what the br
 
 ## Screenshots
 
-### 1. BullMQ Queue Dashboard
-![Queue Dashboard](./assets/queue-dashboard.png)
+### 1. Queue Orchestration — BullMQ Dashboard
+Shows worker creation, job assignment, extractor startup, timeout configuration, and query execution.
 
-### 2. API Response (PowerShell)
-![API Response](./assets/api-response.png)
+<img width="1600" height="790" alt="Worker Startup Logs" src="https://github.com/user-attachments/assets/41e177d5-bbef-4774-b0d7-a84876f1a42e" />
 
-### 3. Worker Terminal Logs (Job Start)
-![Worker Logs - Start](./assets/worker-logs-1.png)
+---
 
-### 4. Worker Terminal Logs (Navigation)
-![Worker Logs - Navigation](./assets/worker-logs-2.png)
+### 2. Worker Lifecycle — Job Initialization & Extractor Startup
+Demonstrates asynchronous job execution, completed jobs, retries, and queue state monitoring.
 
-### 5. Worker Terminal Logs (Extraction)
-![Worker Logs - Extraction](./assets/worker-logs-3.png)
+<img width="972" height="1030" alt="BullMQ Queue Dashboard" src="https://github.com/user-attachments/assets/e8bcbdb7-19be-439f-af62-eb7ab26acb20" />
 
-### 6. Worker Terminal Logs (Deduplication & Persistence)
-![Worker Logs - Deduplication](./assets/worker-logs-4.png)
+---
+
+### 3. Semantic Search Output — API Response
+Example response returned by `/api/v1/search`, showing semantic ranking, abstracts, metadata, and similarity scores.
+
+<img width="1600" height="967" alt="API Search Response" src="https://github.com/user-attachments/assets/5505066d-fcee-46cc-8cf6-e608ad4d904d" />
+
+---
+
+### 4. Playwright Navigation — URL Construction & DOM Interaction
+Shows navigation success, selector waits, and result discovery during multi-source extraction.
+
+<img width="1316" height="846" alt="Navigation Logs" src="https://github.com/user-attachments/assets/0a0940d6-6f91-448b-8d71-ae9638cd27f2" />
+
+---
+
+### 5. Extraction Pipeline — Parsing & Metadata Collection
+Demonstrates extraction of titles, authors, abstracts, and structured paper metadata.
+
+<img width="1215" height="819" alt="Extraction Logs" src="https://github.com/user-attachments/assets/0dc666cb-ff9d-47f7-8e0f-ab42295bde37" />
+
+---
+
+### 6. Persistence Layer — Deduplication & Database Ingestion
+Shows duplicate detection, Prisma persistence, browser context cleanup, and successful job completion.
+
+<img width="1021" height="990" alt="Deduplication Logs" src="https://github.com/user-attachments/assets/739ff2e6-a2c8-4060-a363-9127763c0172" />
+
+---
 
 ---
 
