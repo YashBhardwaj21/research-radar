@@ -331,16 +331,16 @@ async function startWorker() {
       settings: {
         backoffStrategy: (attemptsMade: number, type?: string) => {
           if (type === 'jitter') {
-            return Math.round(1000 + Math.random() * 500);
+            return Math.round(Math.min(5000 * Math.pow(2, attemptsMade), 60000) + Math.random() * 500);
           }
-          return 5000;
+          return Math.min(5000 * Math.pow(2, attemptsMade), 60000);
         },
       },
     }
   );
 
   bullWorker.on('error', (err) => {
-    logger.error({ err: err.message }, 'Worker: BullMQ worker error');
+    logger.error({ err }, 'Worker: BullMQ worker error');
   });
 
   bullWorker.on('active', () => activeWorkers.inc());
