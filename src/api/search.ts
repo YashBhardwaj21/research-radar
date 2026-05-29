@@ -41,6 +41,15 @@ interface SearchResult {
 export async function startSearchServer(port = 3000) {
   const app = Fastify({ loggerInstance: logger });
 
+  // Global Error Handler
+  app.setErrorHandler((error, request, reply) => {
+    logger.error({ err: error, url: request.url }, 'Unhandled Fastify error');
+    const statusCode = error.statusCode || 500;
+    reply.status(statusCode).send({ 
+      error: statusCode >= 500 ? 'Internal server error.' : error.message 
+    });
+  });
+
   // Rate Limiting
   app.register(require('@fastify/rate-limit'), {
     max: 100,
@@ -177,7 +186,7 @@ export async function startSearchServer(port = 3000) {
 
     } catch (err: any) {
       endTimer();
-      logger.error({ err: err.message }, 'SearchAPI: Query failed');
+      logger.error({ err }, 'SearchAPI: Query failed');
       return reply.status(500).send({ error: 'Internal server error during search.' });
     }
   };
