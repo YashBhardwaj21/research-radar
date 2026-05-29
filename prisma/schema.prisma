@@ -60,6 +60,9 @@ model Paper {
   embedding        Unsupported("vector(768)")?
   embeddingStatus  EmbeddingStatus @default(PENDING)
 
+  pdfUrl           String?
+  content          PaperContent?
+
   // Provenance & Diagnostics
   scrapedAt        DateTime?
   extractorVersion String?
@@ -69,6 +72,15 @@ model Paper {
   metadata         Json?
 
   authors          PaperAuthor[]
+  extraction       PaperExtraction?
+  
+  researchTasks    PaperResearchTask[]
+  modalities       PaperModality[]
+  conditions       PaperCondition[]
+  datasets         PaperDataset[]
+  methods          PaperMethod[]
+  metrics          PaperMetric[]
+
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -91,4 +103,110 @@ model PaperAuthor {
   author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@id([paperId, authorId])
+}
+
+model PaperContent {
+  id          String   @id @default(uuid())
+  paperId     String   @unique
+  paper       Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  fullText    String
+  extractedAt DateTime @default(now())
+}
+
+// --- PHASE 2: STRUCTURED KNOWLEDGE EXTRACTION ---
+
+model ResearchTask {
+  id       String              @id @default(uuid())
+  name     String              @unique
+  papers   PaperResearchTask[]
+}
+
+model Modality {
+  id       String          @id @default(uuid())
+  name     String          @unique
+  papers   PaperModality[]
+}
+
+model Condition {
+  id       String           @id @default(uuid())
+  name     String           @unique
+  papers   PaperCondition[]
+}
+
+model Dataset {
+  id       String         @id @default(uuid())
+  name     String         @unique
+  papers   PaperDataset[]
+}
+
+model Method {
+  id       String        @id @default(uuid())
+  name     String        @unique
+  papers   PaperMethod[]
+}
+
+model Metric {
+  id       String        @id @default(uuid())
+  name     String        @unique
+  papers   PaperMetric[]
+}
+
+// Extracted unstructured or semi-structured fields that aren't global concepts
+model PaperExtraction {
+  id           String   @id @default(uuid())
+  paperId      String   @unique
+  paper        Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  limitations  String?
+  futureWork   String?
+  extractedAt  DateTime @default(now())
+}
+
+// Join Tables
+
+model PaperResearchTask {
+  paperId  String
+  taskId   String
+  paper    Paper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  task     ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  @@id([paperId, taskId])
+}
+
+model PaperModality {
+  paperId    String
+  modalityId String
+  paper      Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  modality   Modality @relation(fields: [modalityId], references: [id], onDelete: Cascade)
+  @@id([paperId, modalityId])
+}
+
+model PaperCondition {
+  paperId     String
+  conditionId String
+  paper       Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  condition   Condition @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+  @@id([paperId, conditionId])
+}
+
+model PaperDataset {
+  paperId   String
+  datasetId String
+  paper     Paper   @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  dataset   Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  @@id([paperId, datasetId])
+}
+
+model PaperMethod {
+  paperId  String
+  methodId String
+  paper    Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  method   Method @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  @@id([paperId, methodId])
+}
+
+model PaperMetric {
+  paperId  String
+  metricId String
+  paper    Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  metric   Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  @@id([paperId, metricId])
 }
