@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+langchain
+langchain-ollama
+psycopg2-binary
+sqlalchemy
+neo4j
+langgraph
