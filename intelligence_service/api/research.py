@@ -54,20 +54,72 @@ def research_assistant(req: RAGRequest):
     """
     return run_hybrid_rag(req.query)
 
+import uuid
+from fastapi import BackgroundTasks
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import os
+
+DB_URL = os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@localhost:5432/pipeline")
+
+def run_background_deep_dive(job_id: str, topic: str):
+    try:
+        initial_state = {"job_id": job_id, "topic": topic}
+        app_graph.invoke(initial_state)
+    except Exception as e:
+        print(f"Workflow failed: {e}")
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('UPDATE "ResearchRequest" SET status = %s, "updatedAt" = NOW() WHERE id = %s', ("FAILED", job_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
 @router.post("/deep-dive")
-def deep_dive(req: DeepDiveRequest):
+def deep_dive_async(req: DeepDiveRequest, background_tasks: BackgroundTasks):
     """
-    Kicks off a multi-step LangGraph workflow that retrieves, filters, synthesizes, and ranks papers.
+    Kicks off an asynchronous multi-step LangGraph workflow that retrieves, filters, synthesizes, and ranks papers.
+    Returns a job_id immediately.
     """
-    initial_state = {"topic": req.topic}
-    final_state = app_graph.invoke(initial_state)
+    job_id = str(uuid.uuid4())
+    topic = req.topic
+    
+    # Create the ResearchRequest in PostgreSQL
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute(
+        'INSERT INTO "ResearchRequest" (id, topic, status, progress, "createdAt", "updatedAt") VALUES (%s, %s, %s, %s, NOW(), NOW())',
+        (job_id, topic, "QUEUED", 0)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    # Launch LangGraph in the background
+    background_tasks.add_task(run_background_deep_dive, job_id, topic)
     
     return {
-        "topic": req.topic,
-        "synthesis": final_state.get("synthesis"),
-        "ranking": final_state.get("ranking"),
-        "papers_used": len(final_state.get("filtered_papers", []))
+        "job_id": job_id,
+        "topic": topic,
+        "status": "QUEUED"
     }
+
+@router.get("/job/{job_id}")
+def get_job_status(job_id: str):
+    """
+    Poll this endpoint to get the status and progress of an asynchronous Deep Dive job.
+    """
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT id, topic, status, progress, result FROM "ResearchRequest" WHERE id = %s', (job_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not row:
+        return {"error": "Job not found"}
+        
+    return dict(row)
 
 @router.post("/discover")
 def discover_gaps(req: DiscoverRequest):
