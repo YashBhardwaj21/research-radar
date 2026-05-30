@@ -31,6 +31,21 @@ services:
       retries: 5
 
 
+  neo4j:
+    image: neo4j:5
+    container_name: pipeline_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - '7474:7474'
+      - '7687:7687'
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
   api:
     build:
@@ -55,3 +70,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  neo4jdata:
